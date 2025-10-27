@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Maze Runner 2D</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0b0c10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Poppins', sans-serif;
+    color: #fff;
+    user-select: none;
+  }
+  canvas {
+    background: #1f2833;
+    border: 3px solid #45a29e;
+    border-radius: 12px;
+    box-shadow: 0 0 15px #45a29e55;
+    touch-action: none;
+  }
+  #ui {
+    text-align: center;
+    margin-top: 10px;
+  }
+  #ui span {
+    margin: 0 10px;
+    font-size: 1.2rem;
+  }
+  #message {
+    font-size: 1.3rem;
+    color: #66fcf1;
+    margin-top: 5px;
+    height: 30px;
+  }
+  #confetti {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 10;
+  }
+  .particle {
+    position: absolute;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: hsl(var(--hue), 100%, 60%);
+    animation: fall 1s linear forwards;
+  }
+  @keyframes fall {
+    to { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<canvas id="mazeCanvas"></canvas>
+<div id="ui">
+  <span>⏱️ Time: <b id="time">0</b>s</span>
+  <span>💎 Score: <b id="score">0</b></span>
+  <span>🔥 Level: <b id="level">1</b></span>
+  <div id="message"></div>
+</div>
+<div id="confetti"></div>
+
+<script>
+const canvas = document.getElementById("mazeCanvas");
+const ctx = canvas.getContext("2d");
+const timeDisplay = document.getElementById("time");
+const scoreDisplay = document.getElementById("score");
+const levelDisplay = document.getElementById("level");
+const messageDisplay = document.getElementById("message");
+const confetti = document.getElementById("confetti");
+
+let cols, rows, cellSize;
+let maze = [];
+let stack = [];
+let player, goal;
+let timer = 0, score = 0, level = 1, gameActive = true;
+let timerInterval;
+
+function setupMaze(size = 8) {
+  clearInterval(timerInterval);
+  canvas.width = Math.min(window.innerWidth - 40, 400);
+  canvas.height = canvas.width;
+  cellSize = canvas.width / size;
+  cols = rows = size;
+  maze = [];
+  stack = [];
+  for (let y = 0; y < rows; y++) {
+    maze[y] = [];
+    for (let x = 0; x < cols; x++) {
+      maze[y][x] = {x, y, walls:[true,true,true,true], visited:false};
+    }
+  }
+  let current = maze[0][0];
+  current.visited = true;
+  stack.push(current);
+  while(stack.length > 0){
+    let next = getNextCell(current);
+    if(next){
+      next.visited = true;
+      removeWalls(current, next);
+      stack.push(current);
+      current = next;
+    } else {
+      current = stack.pop();
+    }
+  }
+  player = {x:0, y:0};
+  goal = {x:cols-1, y:rows-1};
+  timer = 0;
+  gameActive = true;
+  timerInterval = setInterval(()=>{ timer++; timeDisplay.textContent = timer; },1000);
+  drawMaze();
+}
+
+function getNextCell(cell){
+  const {x,y} = cell;
+  const neighbors = [];
+  if(y>0 && !maze[y-1][x].visited) neighbors.push(maze[y-1][x]);
+  if(x<cols-1 && !maze[y][x+1].visited) neighbors.push(maze[y][x+1]);
+  if(y<rows-1 && !maze[y+1][x].visited) neighbors.push(maze[y+1][x]);
+  if(x>0 && !maze[y][x-1].visited) neighbors.push(maze[y][x-1]);
+  if(neighbors.length>0) return neighbors[Math.floor(Math.random()*neighbors.length)];
+  return undefined;
+}
+function removeWalls(a,b){
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  if(dx === 1){ a.walls[3]=false; b.walls[1]=false; }
+  else if(dx === -1){ a.walls[1]=false; b.walls[3]=false; }
+  if(dy === 1){ a.walls[0]=false; b.walls[2]=false; }
+  else if(dy === -1){ a.walls[2]=false; b.walls[0]=false; }
+}
+
+function drawMaze(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#45a29e";
+  for(let y=0;y<rows;y++){
+    for(let x=0;x<cols;x++){
+      const cell = maze[y][x];
+      const x0 = x*cellSize;
+      const y0 = y*cellSize;
+      ctx.beginPath();
+      if(cell.walls[0]){ctx.moveTo(x0,y0);ctx.lineTo(x0+cellSize,y0);}
+      if(cell.walls[1]){ctx.moveTo(x0+cellSize,y0);ctx.lineTo(x0+cellSize,y0+cellSize);}
+      if(cell.walls[2]){ctx.moveTo(x0,y0+cellSize);ctx.lineTo(x0+cellSize,y0+cellSize);}
+      if(cell.walls[3]){ctx.moveTo(x0,y0);ctx.lineTo(x0,y0+cellSize);}
+      ctx.stroke();
+    }
+  }
+  // glow light around player
+  const grad = ctx.createRadialGradient(
+    player.x*cellSize+cellSize/2,
+    player.y*cellSize+cellSize/2,
+    0,
+    player.x*cellSize+cellSize/2,
+    player.y*cellSize+cellSize/2,
+    cellSize*2
+  );
+  grad.addColorStop(0, "rgba(255,255,255,0.2)");
+  grad.addColorStop(1, "rgba(0,0,0,0.8)");
+  ctx.fillStyle = grad;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // draw goal
+  ctx.fillStyle = "#66fcf1";
+  ctx.beginPath();
+  ctx.arc(goal.x*cellSize+cellSize/2, goal.y*cellSize+cellSize/2, cellSize/4, 0, Math.PI*2);
+  ctx.fill();
+
+  // draw player
+  ctx.fillStyle = "#fff";
+  ctx.beginPath();
+  ctx.arc(player.x*cellSize+cellSize/2, player.y*cellSize+cellSize/2, cellSize/3, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function movePlayer(dx,dy){
+  if(!gameActive) return;
+  const cell = maze[player.y][player.x];
+  if(dy === -1 && !cell.walls[0]) player.y--;
+  else if(dx === 1 && !cell.walls[1]) player.x++;
+  else if(dy === 1 && !cell.walls[2]) player.y++;
+  else if(dx === -1 && !cell.walls[3]) player.x--;
+  drawMaze();
+  checkGoal();
+}
+
+function checkGoal(){
+  if(player.x === goal.x && player.y === goal.y){
+    gameActive = false;
+    clearInterval(timerInterval);
+    const points = Math.max(100 - timer, 10);
+    score += points;
+    scoreDisplay.textContent = score;
+    messageDisplay.textContent = `🎉 Level ${level} Complete! +${points} pts`;
+    triggerConfetti();
+    setTimeout(()=>{
+      messageDisplay.textContent = "";
+      level++;
+      levelDisplay.textContent = level;
+      setupMaze(Math.min(8 + level, 20));
+    },2000);
+  }
+}
+
+function triggerConfetti(){
+  for(let i=0;i<100;i++){
+    const part = document.createElement("div");
+    part.className = "particle";
+    part.style.left = Math.random()*window.innerWidth+"px";
+    part.style.top = "-10px";
+    part.style.setProperty("--hue", Math.random()*360);
+    confetti.appendChild(part);
+    setTimeout(()=>confetti.removeChild(part),1000);
+  }
+}
+
+// Swipe detection
+let touchStartX = 0, touchStartY = 0;
+canvas.addEventListener("touchstart", e=>{
+  const t = e.touches[0];
+  touchStartX = t.clientX;
+  touchStartY = t.clientY;
+});
+canvas.addEventListener("touchend", e=>{
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStartX;
+  const dy = t.clientY - touchStartY;
+  if(Math.abs(dx) > Math.abs(dy)){
+    if(dx > 30) movePlayer(1,0);
+    else if(dx < -30) movePlayer(-1,0);
+  } else {
+    if(dy > 30) movePlayer(0,1);
+    else if(dy < -30) movePlayer(0,-1);
+  }
+});
+
+setupMaze();
+</script>
+</body>
+</html>
